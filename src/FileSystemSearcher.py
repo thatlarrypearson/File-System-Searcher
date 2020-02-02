@@ -6,6 +6,7 @@ import mimetypes
 import socket
 import json
 import csv
+import zipfile
 from pathlib import Path, WindowsPath, PurePath
 from platform import uname
 from argparse import ArgumentParser
@@ -18,16 +19,49 @@ HASH_BLOCK_SIZE = 4 * 1024 * 1024
 def dropbox_hash(path):
     hash_list = []
 
-    with open(path, 'rb') as f:
-        while True:
-            chunk = f.read(HASH_BLOCK_SIZE)
-            if len(chunk) == 0:
-                break
+    try:
+        with open(path, 'rb') as f:
+            while True:
+                chunk = f.read(HASH_BLOCK_SIZE)
+                if len(chunk) == 0:
+                    break
 
-            hash_list.append(sha256(chunk).digest())
+                hash_list.append(sha256(chunk).digest())
+
+    except OSError as e:
+
+        print("OSError: {0}".format(e), file=sys.stderr)
+        print("File Name: {0}".format(path), file=sys.stderr)
+        print("Hash List Length: {0}".format(len(hash_list)), file=sys.stderr)
+        return ''
     
     hash = sha256(b"".join(hash_list))
     return  hash.hexdigest()
+
+
+def zip_dropbox_hash(z_file, zip_name, name):
+    hash_list = []
+
+    try:
+        with z_file.open(name, 'r') as f:
+            while True:
+                chunk = f.read(HASH_BLOCK_SIZE)
+                if len(chunk) == 0:
+                    break
+
+                hash_list.append(sha256(chunk).digest())
+
+    except OSError as e:
+
+        print("\nOSError: {0}".format(e), file=sys.stderr)
+        print("Zip Archive File Name: {0}".format(zip_name), file=sys.stderr)
+        print("File Name: {0}".format(name), file=sys.stderr)
+        print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+        return ''
+ 
+    hash = sha256(b"".join(hash_list))
+    return  hash.hexdigest()
+
 
 def convert_datetime_to_utc(dt):
     return pytz.utc.localize(dt)
@@ -115,6 +149,9 @@ class Publish():
     def csv_footer(self):
         pass
 
+    def close(self):
+        self.fd.close()
+
 
 # https://docs.python.org/3/library/pathlib.html
 # https://docs.python.org/3/library/mimetypes.html
@@ -123,12 +160,13 @@ class Publish():
 
 
 class Crawler():
-    def __init__(self, volume=None, verbose=False):
+    def __init__(self, volume=None, verbose=False, zip_file=False):
         self.current_working_directory = Path.cwd()
         self.volume = volume
         self.verbose = verbose
         self.hostname = socket.gethostname()
         self.base_path = None
+        self.zip_file = zip_file
 
     def base_to_absolute_path(self, base_path):
         if base_path is None:
@@ -192,9 +230,88 @@ class Crawler():
         print(record)
 
 
+class ZipCrawler():
+
+    def __init__(self, zipfile, volume, verbose=False ):
+        self.file = zipfile
+        self.current_working_directory = Path.cwd()
+        self.volume = volume
+        self.verbose = verbose
+        self.hostname = socket.gethostname()
+        self.base_path = zipfile
+        print("ZipCrawler.__init__({0}, {1})".format(zipfile, volume))
+
+    def __iter__(self):
+        self.z_file = zipfile.ZipFile(self.file)
+        self.z_name_iter = iter(self.z_file.namelist())
+        print("ZipCrawler.__iter__")
+
+        return self
+    
+    def __next__(self):
+        name = self.z_name_iter.__next__()
+        info = self.z_file.getinfo(name)
+        print("ZipCrawler.__next__ name:{0}".format(name))
+
+        # skip directories
+        while info.is_dir():
+            name = self.z_name_iter.__next__()
+            info = self.z_file.getinfo(name)
+            print("ZipCrawler.__next__ is_dir({0})".format(name))
+
+        utc_dt = (convert_datetime_to_utc(datetime(
+                info.date_time[0],
+                info.date_time[1],
+                info.date_time[2],
+                hour=info.date_time[3],
+                minute=info.date_time[4],
+                second=info.date_time[5]
+            ))).isoformat()
+
+        p = Path(name)
+        record = {
+                'hostname': self.hostname,
+                'volume': self.volume,
+                'file_name': info.filename,
+                'relative_path': name,
+                'full_path': self.file + '/' + name,
+                'size': info.file_size,
+                'dropbox_hash': zip_dropbox_hash(self.z_file, self.file, name),
+                'created': utc_dt,
+                'modified': utc_dt,
+                'suffix': p.suffix,
+                'mime_type': None,
+                'mime_encoding': None,
+            }
+
+        record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
+
+        return record
+
+
 # https://docs.python.org/3/howto/argparse.html
 # https://docs.python.org/3/library/argparse.html#module-argparse
 # https://docs.python.org/3/library/argparse.html
+
+def main_loop(args, publish):
+    crawler = Crawler(volume=args['volume'], verbose=args['verbose'])
+
+    first_time = True
+    for base_path in args['base_paths']:
+        for record in crawler.path_crawler(base_path):
+            if first_time:
+                first_time = False
+                publish.header(record)
+            else:
+                publish.body(record)
+
+            if args['search_zip_files'] and record['suffix'] in ['.zip', ]:
+                zcrawler = ZipCrawler(record['file_name'], volume=args['volume'], verbose=args['verbose'])
+
+                for record in zcrawler:
+                    publish.body(record)
+
+    publish.footer()
 
 
 def main():
@@ -222,6 +339,12 @@ def main():
             choices=["txt", "csv", "json", ],
             default="txt"
         )
+    parser.add_argument(
+            "--search_zip_files",
+            help="Include files found in zip files in results.",
+            default=False,
+            action='store_true'
+        )
     args = vars(parser.parse_args())
 
     if isinstance(args['output_file'], str):
@@ -232,19 +355,11 @@ def main():
     else:
         output_fd = args['output_file']
 
-    crawler = Crawler(volume=args['volume'], verbose=args['verbose'])
-    
     publish = Publish(args['output_format'], output_fd)
 
-    first_time = True
-    for base_path in args['base_paths']:
-        for record in crawler.path_crawler(base_path):
-            if first_time:
-                first_time = False
-                publish.header(record)
-            else:
-                publish.body(record)
-        publish.footer()
+    main_loop(args, publish)
+
+    publish.close()
 
 if __name__ == "__main__":
     # execute only if run as a script

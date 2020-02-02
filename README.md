@@ -31,6 +31,10 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
     The output is put into a ```list()``` of records composed of dictionaries - ```dict()```.  The output is then converted into JSON format.
 
+* ```--zip_file_search```
+
+  Include files found in zip files in results.  Otherwise, zip files will only be noted.
+
 ### Base Paths
 * ```base_path```
   The relative or absolute path to the directory where the file search should begin.  When not present, the ```base_path``` defaults to the current working directory.
@@ -119,5 +123,12 @@ The software has been tested on:
 
 ## Requierd Python Libraries
 
-No required Python libraries.  Yet.
+The following Python libraries need to be added to support running this program:
+
+* ```pytz```
+
+```bash
+python3.8 -m pip install pytz
+```
+
 
