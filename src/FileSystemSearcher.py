@@ -20,7 +20,8 @@ def dropbox_hash(path):
     hash_list = []
 
     try:
-        with open(path, 'rb') as f:
+        # no buffering - otherwise read fails
+        with open(path, 'rb', 0) as f:
             while True:
                 chunk = f.read(HASH_BLOCK_SIZE)
                 if len(chunk) == 0:
@@ -242,7 +243,7 @@ class ZipCrawler():
         print("ZipCrawler.__init__({0}, {1})".format(zipfile, volume))
 
     def __iter__(self):
-        self.z_file = zipfile.ZipFile(self.file)
+        self.z_file = zipfile.ZipFile(self.base_path)
         self.z_name_iter = iter(self.z_file.namelist())
         print("ZipCrawler.__iter__")
 
@@ -306,7 +307,7 @@ def main_loop(args, publish):
                 publish.body(record)
 
             if args['search_zip_files'] and record['suffix'] in ['.zip', ]:
-                zcrawler = ZipCrawler(record['file_name'], volume=args['volume'], verbose=args['verbose'])
+                zcrawler = ZipCrawler(record['full_path'], volume=args['volume'], verbose=args['verbose'])
 
                 for record in zcrawler:
                     publish.body(record)

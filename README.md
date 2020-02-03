@@ -33,7 +33,7 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
 * ```--zip_file_search```
 
-  Include files found in zip files in results.  Otherwise, zip files will only be noted.
+  Include files found in zip files in results.  Otherwise, zip files will only be noted.  When enabled, ```relative_path``` is relative to the zip archive.  ```full_path``` treats the zip archive file as a directory in the path to the archived file.
 
 ### Base Paths
 * ```base_path```
