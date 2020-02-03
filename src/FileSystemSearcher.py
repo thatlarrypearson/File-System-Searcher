@@ -240,16 +240,25 @@ class ZipCrawler():
         self.verbose = verbose
         self.hostname = socket.gethostname()
         self.base_path = zipfile
+        self.stop_iterator = False
         print("ZipCrawler.__init__({0}, {1})".format(zipfile, volume))
 
     def __iter__(self):
-        self.z_file = zipfile.ZipFile(self.base_path)
-        self.z_name_iter = iter(self.z_file.namelist())
-        print("ZipCrawler.__iter__")
+        try:
+            self.z_file = zipfile.ZipFile(self.base_path)
+            self.z_name_iter = iter(self.z_file.namelist())
+            print("ZipCrawler.__iter__")
+
+        except zipfile.BadZipFile as e:
+            self.stop_iterator = True
+            print("BadZipFile: {0}".format(e), file=sys.stderr)
+            print("File Name: {0}".format(self.base_path), file=sys.stderr)
 
         return self
     
     def __next__(self):
+        if self.stop_iterator:
+            raise StopIteration()
         name = self.z_name_iter.__next__()
         info = self.z_file.getinfo(name)
         print("ZipCrawler.__next__ name:{0}".format(name))
