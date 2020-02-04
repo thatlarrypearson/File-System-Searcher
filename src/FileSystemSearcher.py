@@ -20,7 +20,7 @@ def dropbox_hash(path):
     hash_list = []
 
     try:
-        # no buffering - otherwise read fails
+        # no buffering - otherwise read fails on large files - HASH_BLOCK_SIZE > default buffer size
         with open(path, 'rb', 0) as f:
             while True:
                 chunk = f.read(HASH_BLOCK_SIZE)
@@ -66,6 +66,7 @@ def zip_dropbox_hash(z_file, zip_name, name):
 
 def convert_datetime_to_utc(dt):
     return pytz.utc.localize(dt)
+
 
 class Publish():
     def __init__(self, output_format, output_fd):
@@ -154,12 +155,6 @@ class Publish():
         self.fd.close()
 
 
-# https://docs.python.org/3/library/pathlib.html
-# https://docs.python.org/3/library/mimetypes.html
-# https://docs.python.org/3/library/csv.html
-# https://sahandsaba.com/interview-question-iterator-of-iterators-and-cantor-set-theory.html
-
-
 class Crawler():
     def __init__(self, volume=None, verbose=False, zip_file=False):
         self.current_working_directory = Path.cwd()
@@ -241,18 +236,17 @@ class ZipCrawler():
         self.hostname = socket.gethostname()
         self.base_path = zipfile
         self.stop_iterator = False
-        print("ZipCrawler.__init__({0}, {1})".format(zipfile, volume))
 
     def __iter__(self):
         try:
             self.z_file = zipfile.ZipFile(self.base_path)
             self.z_name_iter = iter(self.z_file.namelist())
-            print("ZipCrawler.__iter__")
 
-        except zipfile.BadZipFile as e:
+        except zipfile.BadZipFile:
+            # Zip file is damaged and/or otherwise unreadable.
             self.stop_iterator = True
-            print("BadZipFile: {0}".format(e), file=sys.stderr)
-            print("File Name: {0}".format(self.base_path), file=sys.stderr)
+            if self.verbose:
+                print("ZipCrawler.__iter__(): Exception: BadZipFile: {0}".format(self.base_path))
 
         return self
     
@@ -261,13 +255,12 @@ class ZipCrawler():
             raise StopIteration()
         name = self.z_name_iter.__next__()
         info = self.z_file.getinfo(name)
-        print("ZipCrawler.__next__ name:{0}".format(name))
 
         # skip directories
+        # this is where you might also add filtering capabilities
         while info.is_dir():
             name = self.z_name_iter.__next__()
             info = self.z_file.getinfo(name)
-            print("ZipCrawler.__next__ is_dir({0})".format(name))
 
         utc_dt = (convert_datetime_to_utc(datetime(
                 info.date_time[0],
@@ -298,10 +291,6 @@ class ZipCrawler():
 
         return record
 
-
-# https://docs.python.org/3/howto/argparse.html
-# https://docs.python.org/3/library/argparse.html#module-argparse
-# https://docs.python.org/3/library/argparse.html
 
 def main_loop(args, publish):
     crawler = Crawler(volume=args['volume'], verbose=args['verbose'])
