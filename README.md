@@ -25,7 +25,7 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
   * ```CSV```
 
-    Comma seperated values that can be imported by Microsoft Excel.  See the Python [csv](https://docs.python.org/3/library/csv.html) library.
+    ```|``` seperated values that can be imported by Microsoft Excel and Access.  See the Python [csv](https://docs.python.org/3/library/csv.html) library.
 
   * ```JSON```
 

@@ -31,9 +31,9 @@ def dropbox_hash(path):
 
     except OSError as e:
 
-        print("OSError: {0}".format(e), file=sys.stderr)
+        print("\nOSError: {0}".format(e), file=sys.stderr)
         print("File Name: {0}".format(path), file=sys.stderr)
-        print("Hash List Length: {0}".format(len(hash_list)), file=sys.stderr)
+        print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
         return ''
     
     hash = sha256(b"".join(hash_list))
@@ -52,7 +52,7 @@ def zip_dropbox_hash(z_file, zip_name, name):
 
                 hash_list.append(sha256(chunk).digest())
 
-    except OSError as e:
+    except (OSError, zipfile.BadZipFile) as e:
 
         print("\nOSError: {0}".format(e), file=sys.stderr)
         print("Zip Archive File Name: {0}".format(zip_name), file=sys.stderr)
@@ -136,7 +136,7 @@ class Publish():
     def csv_header(self, record):
         k_list = list(record)
         k_list.sort()
-        self.csvwriter = csv.writer(self.fd)
+        self.csvwriter = csv.writer(self.fd, dialect='excel', delimiter='|')
         self.csvwriter.writerow(k_list)
         self.csv_body(record)
 
@@ -193,11 +193,23 @@ class Crawler():
         return self
 
     def __next__(self):
-        p = self.path_iterator.__next__()   
-        while not p.is_file() or self.file_filter(p.name):
+        p = None
+        failures = 0
+        while not p or not p.is_file() or self.file_filter(p.name):
             # for things that are not files:
             # verbose print the type of thing it is (str(type(p).__name__)) followed by the path
-            p = self.path_iterator.__next__()
+            try:
+                p = self.path_iterator.__next__()
+                failures = 0
+            except (OSError, FileNotFoundError) as e:
+                failures = failures + 1
+                if self.verbose:
+                    print("\nException: {0}".format(e), file=sys.stderr)
+                    print(
+                        "Crawler.__next__() {0} iterator failures on base_path: {1}\n".format(failures, self.base_path), file=sys.stderr
+                    )
+                if failures > 100:
+                    raise StopIteration()
 
         record = {
             'hostname': self.hostname,
@@ -242,52 +254,63 @@ class ZipCrawler():
             self.z_file = zipfile.ZipFile(self.base_path)
             self.z_name_iter = iter(self.z_file.namelist())
 
-        except zipfile.BadZipFile:
+        except (OSError, zipfile.BadZipFile) as e:
             # Zip file is damaged and/or otherwise unreadable.
             self.stop_iterator = True
             if self.verbose:
-                print("ZipCrawler.__iter__(): Exception: BadZipFile: {0}".format(self.base_path))
+                print("\nzipfile.BadZipFile: {0}".format(e), file=sys.stderr)
+                print("ZipCrawler.__iter__(): Exception: BadZipFile: {0}\n".format(self.base_path), file=sys.stderr)
 
         return self
     
     def __next__(self):
         if self.stop_iterator:
             raise StopIteration()
-        name = self.z_name_iter.__next__()
-        info = self.z_file.getinfo(name)
-
-        # skip directories
-        # this is where you might also add filtering capabilities
-        while info.is_dir():
+        try:
             name = self.z_name_iter.__next__()
             info = self.z_file.getinfo(name)
 
-        utc_dt = (convert_datetime_to_utc(datetime(
-                info.date_time[0],
-                info.date_time[1],
-                info.date_time[2],
-                hour=info.date_time[3],
-                minute=info.date_time[4],
-                second=info.date_time[5]
-            ))).isoformat()
+            # skip directories
+            # this is where you might also add filtering capabilities
+            while info.is_dir():
+                name = self.z_name_iter.__next__()
+                info = self.z_file.getinfo(name)
 
-        p = Path(name)
-        record = {
-                'hostname': self.hostname,
-                'volume': self.volume,
-                'file_name': info.filename,
-                'relative_path': name,
-                'full_path': self.file + '/' + name,
-                'size': info.file_size,
-                'dropbox_hash': zip_dropbox_hash(self.z_file, self.file, name),
-                'created': utc_dt,
-                'modified': utc_dt,
-                'suffix': p.suffix,
-                'mime_type': None,
-                'mime_encoding': None,
-            }
+            utc_dt = (convert_datetime_to_utc(datetime(
+                    info.date_time[0],
+                    info.date_time[1],
+                    info.date_time[2],
+                    hour=info.date_time[3],
+                    minute=info.date_time[4],
+                    second=info.date_time[5]
+                ))).isoformat()
 
-        record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
+            p = Path(name)
+            full_path = self.file + os.path.sep + name
+            if os.path.sep == "\\":
+                full_path = full_path.replace('/', "\\")
+            record = {
+                    'hostname': self.hostname,
+                    'volume': self.volume,
+                    'file_name': info.filename,
+                    'relative_path': name,
+                    'full_path': full_path,
+                    'size': info.file_size,
+                    'dropbox_hash': zip_dropbox_hash(self.z_file, self.file, name),
+                    'created': utc_dt,
+                    'modified': utc_dt,
+                    'suffix': p.suffix,
+                    'mime_type': None,
+                    'mime_encoding': None,
+                }
+
+            record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
+
+        except (OSError, zipfile.BadZipFile) as e:
+            if self.verbose:
+                print("\nzipfile.BadZipFile: {0}".format(e), file=sys.stderr)
+                print("ZipCrawler.__next__(): Exception: BadZipFile: {0}\n".format(self.base_path), file=sys.stderr)
+            raise StopIteration()
 
         return record
 
