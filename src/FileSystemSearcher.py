@@ -15,6 +15,10 @@ from hashlib import sha256
 
 
 HASH_BLOCK_SIZE = 4 * 1024 * 1024
+IMAGE_SUFFIXES = (
+    '.cr2', '.dng', '.gif', '.jpg', '.jpeg', '.tif', '.tiff', '.sqlite', '.sqlite3',
+    '.zip',
+)
 
 def dropbox_hash(path):
     hash_list = []
@@ -156,13 +160,14 @@ class Publish():
 
 
 class Crawler():
-    def __init__(self, volume=None, verbose=False, zip_file=False):
+    def __init__(self, volume=None, verbose=False, zip_file=False, pictures=False):
         self.current_working_directory = Path.cwd()
         self.volume = volume
         self.verbose = verbose
         self.hostname = socket.gethostname()
         self.base_path = None
         self.zip_file = zip_file
+        self.pictures = pictures
 
     def base_to_absolute_path(self, base_path):
         if base_path is None:
@@ -180,7 +185,10 @@ class Crawler():
         # remove '/../' and parent dir with resolve()
         return absolute_base_path.resolve()
 
-    def file_filter(self, relative_path):
+    def file_filter(self, suffix):
+        if self.pictures and not suffix.lower() in IMAGE_SUFFIXES:
+            return True
+
         return False
 
     def path_crawler(self, base_path):
@@ -195,7 +203,7 @@ class Crawler():
     def __next__(self):
         p = None
         failures = 0
-        while not p or not p.is_file() or self.file_filter(p.name):
+        while not p or not p.is_file() or self.file_filter(p.suffix):
             # for things that are not files:
             # verbose print the type of thing it is (str(type(p).__name__)) followed by the path
             try:
@@ -240,7 +248,7 @@ class Crawler():
 
 class ZipCrawler():
 
-    def __init__(self, zipfile, volume, verbose=False ):
+    def __init__(self, zipfile, volume, verbose=False, pictures=False):
         self.file = zipfile
         self.current_working_directory = Path.cwd()
         self.volume = volume
@@ -248,6 +256,13 @@ class ZipCrawler():
         self.hostname = socket.gethostname()
         self.base_path = zipfile
         self.stop_iterator = False
+        self.pictures = pictures
+
+    def file_filter(self, suffix):
+        if self.pictures and not suffix.lower() in IMAGE_SUFFIXES:
+            return True
+
+        return False
 
     def __iter__(self):
         try:
@@ -276,6 +291,13 @@ class ZipCrawler():
                 name = self.z_name_iter.__next__()
                 info = self.z_file.getinfo(name)
 
+            p = Path(name)
+            while self.pictures and not self.file_filter(p.suffix):
+                name = self.z_name_iter.__next__()
+                info = self.z_file.getinfo(name)
+                p = Path(name)
+
+
             utc_dt = (convert_datetime_to_utc(datetime(
                     info.date_time[0],
                     info.date_time[1],
@@ -285,7 +307,6 @@ class ZipCrawler():
                     second=info.date_time[5]
                 ))).isoformat()
 
-            p = Path(name)
             full_path = self.file + os.path.sep + name
             if os.path.sep == "\\":
                 full_path = full_path.replace('/', "\\")
