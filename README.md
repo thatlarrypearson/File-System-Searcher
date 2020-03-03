@@ -136,5 +136,3 @@ The following Python libraries need to be added to support running this program:
 ```bash
 python3.8 -m pip install pytz
 ```
-
-

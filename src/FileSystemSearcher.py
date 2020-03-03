@@ -271,16 +271,17 @@ class ZipCrawler():
         if self.stop_iterator:
             raise StopIteration()
         try:
+            # name is really a path within the archive
             name = self.z_name_iter.__next__()
             info = self.z_file.getinfo(name)
 
             # skip directories
-            # this is where you might also add filtering capabilities
             while info.is_dir():
                 name = self.z_name_iter.__next__()
                 info = self.z_file.getinfo(name)
+            
+            file_name = self.get_file_name(name)
 
-            p = Path(name)
             utc_dt = (convert_datetime_to_utc(datetime(
                     info.date_time[0],
                     info.date_time[1],
@@ -296,19 +297,19 @@ class ZipCrawler():
             record = {
                     'hostname': self.hostname,
                     'volume': self.volume,
-                    'file_name': info.filename,
+                    'file_name': file_name,
                     'relative_path': name,
                     'full_path': full_path,
                     'size': info.file_size,
                     'dropbox_hash': None,
                     'created': utc_dt,
                     'modified': utc_dt,
-                    'suffix': p.suffix,
+                    'suffix': self.get_suffix(file_name),
                     'mime_type': None,
                     'mime_encoding': None,
                 }
 
-            record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
+            record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
 
             if hash:
                 record['dropbox_hash'] = zip_dropbox_hash(self.z_file, self.file, name)
@@ -320,6 +321,20 @@ class ZipCrawler():
             raise StopIteration()
 
         return record
+
+    def get_suffix(self, file_name):
+        if "." not in file_name):
+            return None
+        parts = file_name.split('.')
+        if len(parts[-1]) > 15:
+            return None
+        return parts[-1]
+
+    def get_file_name(self, name):
+        if "/" not in name:
+            return name
+        parts = name.split('.')
+        return parts[-1]
 
 
 def main_loop(args, publish):
