@@ -15,10 +15,7 @@ from hashlib import sha256
 
 
 HASH_BLOCK_SIZE = 4 * 1024 * 1024
-IMAGE_SUFFIXES = (
-    '.cr2', '.dng', '.gif', '.jpg', '.jpeg', '.tif', '.tiff', '.sqlite', '.sqlite3',
-    '.zip',
-)
+
 
 def dropbox_hash(path):
     hash_list = []
@@ -160,14 +157,14 @@ class Publish():
 
 
 class Crawler():
-    def __init__(self, volume=None, verbose=False, zip_file=False, pictures=False):
+    def __init__(self, volume=None, verbose=False, zip_file=False, hash=True):
         self.current_working_directory = Path.cwd()
         self.volume = volume
         self.verbose = verbose
         self.hostname = socket.gethostname()
         self.base_path = None
         self.zip_file = zip_file
-        self.pictures = pictures
+        self.hash = hash
 
     def base_to_absolute_path(self, base_path):
         if base_path is None:
@@ -185,12 +182,6 @@ class Crawler():
         # remove '/../' and parent dir with resolve()
         return absolute_base_path.resolve()
 
-    def file_filter(self, suffix):
-        if self.pictures and not suffix.lower() in IMAGE_SUFFIXES:
-            return True
-
-        return False
-
     def path_crawler(self, base_path):
         self.base_path = self.base_to_absolute_path(base_path)
         return self
@@ -203,7 +194,7 @@ class Crawler():
     def __next__(self):
         p = None
         failures = 0
-        while not p or not p.is_file() or self.file_filter(p.suffix):
+        while not p or not p.is_file():
             # for things that are not files:
             # verbose print the type of thing it is (str(type(p).__name__)) followed by the path
             try:
@@ -217,6 +208,8 @@ class Crawler():
                         "Crawler.__next__() {0} iterator failures on base_path: {1}\n".format(failures, self.base_path), file=sys.stderr
                     )
                 if failures > 100:
+                    # This might be overkill.
+                    # Generally when these exceptions occur, the iterator is done and won't restart on the first try.
                     raise StopIteration()
 
         record = {
@@ -226,7 +219,7 @@ class Crawler():
             'relative_path': str(p.relative_to(self.base_path)),
             'full_path': str(self.base_path / p),
             'size': int(p.stat().st_size),
-            'dropbox_hash': dropbox_hash(p),
+            'dropbox_hash': None,
             'created': (convert_datetime_to_utc(datetime.fromtimestamp(p.stat().st_ctime))).isoformat(),
             'modified': (convert_datetime_to_utc(datetime.fromtimestamp(p.stat().st_mtime))).isoformat(),
             'suffix': p.suffix,
@@ -235,6 +228,9 @@ class Crawler():
         }
 
         record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
+
+        if self.hash:
+            record['dropbox_hash'] = dropbox_hash(p)
 
         return record
 
@@ -247,8 +243,7 @@ class Crawler():
 
 
 class ZipCrawler():
-
-    def __init__(self, zipfile, volume, verbose=False, pictures=False):
+    def __init__(self, zipfile, volume, verbose=False, hash=True):
         self.file = zipfile
         self.current_working_directory = Path.cwd()
         self.volume = volume
@@ -256,13 +251,7 @@ class ZipCrawler():
         self.hostname = socket.gethostname()
         self.base_path = zipfile
         self.stop_iterator = False
-        self.pictures = pictures
-
-    def file_filter(self, suffix):
-        if self.pictures and not suffix.lower() in IMAGE_SUFFIXES:
-            return True
-
-        return False
+        self.hash = hash
 
     def __iter__(self):
         try:
@@ -292,12 +281,6 @@ class ZipCrawler():
                 info = self.z_file.getinfo(name)
 
             p = Path(name)
-            while self.pictures and not self.file_filter(p.suffix):
-                name = self.z_name_iter.__next__()
-                info = self.z_file.getinfo(name)
-                p = Path(name)
-
-
             utc_dt = (convert_datetime_to_utc(datetime(
                     info.date_time[0],
                     info.date_time[1],
@@ -317,7 +300,7 @@ class ZipCrawler():
                     'relative_path': name,
                     'full_path': full_path,
                     'size': info.file_size,
-                    'dropbox_hash': zip_dropbox_hash(self.z_file, self.file, name),
+                    'dropbox_hash': None,
                     'created': utc_dt,
                     'modified': utc_dt,
                     'suffix': p.suffix,
@@ -326,6 +309,9 @@ class ZipCrawler():
                 }
 
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
+
+            if hash:
+                record['dropbox_hash'] = zip_dropbox_hash(self.z_file, self.file, name)
 
         except (OSError, zipfile.BadZipFile) as e:
             if self.verbose:
