@@ -323,7 +323,7 @@ class ZipCrawler():
 
 
 def main_loop(args, publish):
-    crawler = Crawler(volume=args['volume'], verbose=args['verbose'])
+    crawler = Crawler(volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
 
     first_time = True
     for base_path in args['base_paths']:
@@ -371,6 +371,12 @@ def main():
     parser.add_argument(
             "--search_zip_files",
             help="Include files found in zip files in results.",
+            default=False,
+            action='store_true'
+        )
+    parser.add_argument(
+            "--no_hash",
+            help="Turn of dropbox_hash generation.",
             default=False,
             action='store_true'
         )
