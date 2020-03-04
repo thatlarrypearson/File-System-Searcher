@@ -215,7 +215,7 @@ class Crawler():
         record = {
             'hostname': self.hostname,
             'volume': self.volume,
-            'file_name': p.name,
+            'file_name': self.get_file_name(p.name),
             'relative_path': str(p.relative_to(self.base_path)),
             'full_path': str(self.base_path / p),
             'size': int(p.stat().st_size),
@@ -233,6 +233,15 @@ class Crawler():
             record['dropbox_hash'] = dropbox_hash(p)
 
         return record
+    
+    def get_file_name(self, name):
+        if '/' in name:
+            parts = name.split('/')
+            return parts[-1]
+        elif '\\' in name:
+            parts = name.split('\\')
+            return parts[-1]
+        return name
 
     def file_system_search(self, base_path):
         for record in self.path_crawler(base_path):
@@ -323,7 +332,7 @@ class ZipCrawler():
         return record
 
     def get_suffix(self, file_name):
-        if "." not in file_name):
+        if "." not in file_name:
             return None
         parts = file_name.split('.')
         if len(parts[-1]) > 15:
