@@ -10,9 +10,18 @@ import zipfile
 from pathlib import Path, WindowsPath, PurePath
 from platform import uname
 from argparse import ArgumentParser
-from datetime import datetime
+from datetime import datetime, MINYEAR
 from hashlib import sha256
 
+try:
+    import fcntl
+    def local_fcntl(fd):
+        orig_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, orig_flags | os.O_NONBLOCK)
+
+except ImportError:
+    def local_fcntl(fd):
+        pass
 
 HASH_BLOCK_SIZE = 4 * 1024 * 1024
 
@@ -22,19 +31,23 @@ def dropbox_hash(path):
 
     try:
         # no buffering - otherwise read fails on large files - HASH_BLOCK_SIZE > default buffer size
-        with open(path, 'rb', 0) as f:
+        with open(path, 'rb', 0) as fd:
+            local_fcntl(fd)
             while True:
-                chunk = f.read(HASH_BLOCK_SIZE)
-                if len(chunk) == 0:
+                chunk = fd.read(HASH_BLOCK_SIZE)
+                if not chunk or len(chunk) == 0:
                     break
 
                 hash_list.append(sha256(chunk).digest())
 
     except OSError as e:
 
-        print("\nOSError: {0}".format(e), file=sys.stderr)
+        print("\nFileSystemSearcher.dropbox_hash(): {0}".format(e), file=sys.stderr)
         print("File Name: {0}".format(path), file=sys.stderr)
         print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+        return ''
+
+    except ImportError:
         return ''
     
     hash = sha256(b"".join(hash_list))
@@ -194,9 +207,19 @@ class Crawler():
     def __next__(self):
         p = None
         failures = 0
-        while not p or not p.is_file():
+        is_file = False
+        while not p or not is_file:
             # for things that are not files:
             # verbose print the type of thing it is (str(type(p).__name__)) followed by the path
+            if p:
+                try:
+                    is_file = p.is_file()
+                except PermissionError as e:
+                    print("\nException: {0}".format(e), file=sys.stderr)
+                    print("Crawler.__next__(): pathlib Path.is_file() failure on base_path: {0}\n".format(self.base_path),
+                            file=sys.stderr)
+            if p and is_file:
+                break
             try:
                 p = self.path_iterator.__next__()
                 failures = 0
@@ -205,23 +228,26 @@ class Crawler():
                 if self.verbose:
                     print("\nException: {0}".format(e), file=sys.stderr)
                     print(
-                        "Crawler.__next__() {0} iterator failures on base_path: {1}\n".format(failures, self.base_path), file=sys.stderr
-                    )
+                        "Crawler.__next__() {0} iterator failures on base_path: {1}\n".format(failures, self.base_path),
+                        file=sys.stderr)
                 if failures > 100:
                     # This might be overkill.
                     # Generally when these exceptions occur, the iterator is done and won't restart on the first try.
                     raise StopIteration()
 
+        created = (convert_datetime_to_utc(datetime.fromtimestamp(p.stat().st_ctime))).isoformat()
+        modified = (convert_datetime_to_utc(datetime.fromtimestamp(p.stat().st_mtime))).isoformat()
+
         record = {
             'hostname': self.hostname,
             'volume': self.volume,
-            'file_name': self.get_file_name(p.name),
+            'file_name': self.get_file_name(p),
             'relative_path': str(p.relative_to(self.base_path)),
             'full_path': str(self.base_path / p),
             'size': int(p.stat().st_size),
-            'dropbox_hash': None,
-            'created': (convert_datetime_to_utc(datetime.fromtimestamp(p.stat().st_ctime))).isoformat(),
-            'modified': (convert_datetime_to_utc(datetime.fromtimestamp(p.stat().st_mtime))).isoformat(),
+            'dropbox_hash': '',
+            'created': created,
+            'modified': modified,
             'suffix': p.suffix,
             'mime_type': None,
             'mime_encoding': None,
@@ -229,12 +255,17 @@ class Crawler():
 
         record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
 
-        if self.hash:
+        if self.hash and record['size'] > 0:
+            print("%s, %d" % (str(p), record['size'], )file=sys.stderr)
             record['dropbox_hash'] = dropbox_hash(p)
+        
+        if not created or not modified:
+            print('\ncreated or modified is None\n', record, '\n')
 
         return record
     
     def get_file_name(self, name):
+        name = str(name)
         if '/' in name:
             parts = name.split('/')
             return parts[-1]
@@ -291,14 +322,19 @@ class ZipCrawler():
             
             file_name = self.get_file_name(name)
 
-            utc_dt = (convert_datetime_to_utc(datetime(
-                    info.date_time[0],
-                    info.date_time[1],
-                    info.date_time[2],
-                    hour=info.date_time[3],
-                    minute=info.date_time[4],
-                    second=info.date_time[5]
-                ))).isoformat()
+            try:
+                utc_dt = (convert_datetime_to_utc(datetime(
+                        info.date_time[0],
+                        info.date_time[1],
+                        info.date_time[2],
+                        hour=info.date_time[3],
+                        minute=info.date_time[4],
+                        second=info.date_time[5]
+                    ))).isoformat()
+            except ValueError as e:
+                # some zip file date records have out-of-bound values
+                # this value should show up as 0001-01-01
+                utc_dt = (convert_datetime_to_utc(datetime(MINYEAR, 1, 1))).isoformat()
 
             full_path = self.file + os.path.sep + name
             if os.path.sep == "\\":
@@ -310,7 +346,7 @@ class ZipCrawler():
                     'relative_path': name,
                     'full_path': full_path,
                     'size': info.file_size,
-                    'dropbox_hash': None,
+                    'dropbox_hash': '',
                     'created': utc_dt,
                     'modified': utc_dt,
                     'suffix': self.get_suffix(file_name),
@@ -320,7 +356,7 @@ class ZipCrawler():
 
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
 
-            if hash:
+            if hash and record['size'] > 0:
                 record['dropbox_hash'] = zip_dropbox_hash(self.z_file, self.file, name)
 
         except (OSError, zipfile.BadZipFile) as e:
@@ -340,6 +376,7 @@ class ZipCrawler():
         return parts[-1]
 
     def get_file_name(self, name):
+        name = str(name)
         if "/" not in name:
             return name
         parts = name.split('.')
