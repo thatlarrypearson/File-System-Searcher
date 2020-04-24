@@ -13,26 +13,26 @@ from argparse import ArgumentParser
 from datetime import datetime, MINYEAR
 from hashlib import sha256
 
-try:
-    import fcntl
-    def local_fcntl(fd):
-        orig_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, orig_flags | os.O_NONBLOCK)
+# try:
+#     import fcntl
+#     def local_fcntl(fd):
+#         orig_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+#         fcntl.fcntl(fd, fcntl.F_SETFL, orig_flags | os.O_NONBLOCK)
 
-except ImportError:
-    def local_fcntl(fd):
-        pass
+# except ImportError:
+#     def local_fcntl(fd):
+#         pass
 
-HASH_BLOCK_SIZE = 4 * 1024 * 1024
+# HASH_BLOCK_SIZE = 4 * 1024 * 1024
 
 
-def dropbox_hash(path):
+def dropbox_hash(path, verbose=False):
     hash_list = []
 
     try:
         # no buffering - otherwise read fails on large files - HASH_BLOCK_SIZE > default buffer size
         with open(path, 'rb', 0) as fd:
-            local_fcntl(fd)
+            # local_fcntl(fd)
             while True:
                 chunk = fd.read(HASH_BLOCK_SIZE)
                 if not chunk or len(chunk) == 0:
@@ -41,20 +41,17 @@ def dropbox_hash(path):
                 hash_list.append(sha256(chunk).digest())
 
     except OSError as e:
-
-        print("\nFileSystemSearcher.dropbox_hash(): {0}".format(e), file=sys.stderr)
-        print("File Name: {0}".format(path), file=sys.stderr)
-        print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
-        return ''
-
-    except ImportError:
+        if verbose:
+            print("\nFileSystemSearcher.dropbox_hash(): {0}".format(e), file=sys.stderr)
+            print("File Name: {0}".format(path), file=sys.stderr)
+            print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
         return ''
     
     hash = sha256(b"".join(hash_list))
     return  hash.hexdigest()
 
 
-def zip_dropbox_hash(z_file, zip_name, name):
+def zip_dropbox_hash(z_file, zip_name, name, verbose=False):
     hash_list = []
 
     try:
@@ -67,11 +64,11 @@ def zip_dropbox_hash(z_file, zip_name, name):
                 hash_list.append(sha256(chunk).digest())
 
     except (OSError, zipfile.BadZipFile) as e:
-
-        print("\nOSError: {0}".format(e), file=sys.stderr)
-        print("Zip Archive File Name: {0}".format(zip_name), file=sys.stderr)
-        print("File Name: {0}".format(name), file=sys.stderr)
-        print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+        if verbose:
+            print("\nOSError: {0}".format(e), file=sys.stderr)
+            print("Zip Archive File Name: {0}".format(zip_name), file=sys.stderr)
+            print("File Name: {0}".format(name), file=sys.stderr)
+            print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
         return ''
  
     hash = sha256(b"".join(hash_list))
@@ -215,8 +212,9 @@ class Crawler():
                 try:
                     is_file = p.is_file()
                 except PermissionError as e:
-                    print("\nException: {0}".format(e), file=sys.stderr)
-                    print("Crawler.__next__(): pathlib Path.is_file() failure on base_path: {0}\n".format(self.base_path),
+                    if self.verbose:
+                        print("\nException: {0}".format(e), file=sys.stderr)
+                        print("Crawler.__next__(): pathlib Path.is_file() failure on base_path: {0}\n".format(self.base_path),
                             file=sys.stderr)
             if p and is_file:
                 break
@@ -251,16 +249,18 @@ class Crawler():
             'suffix': p.suffix,
             'mime_type': None,
             'mime_encoding': None,
+            'is_archve': True,
         }
 
         record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
 
         if self.hash and record['size'] > 0:
-            print("%s, %d" % (str(p), record['size'], )file=sys.stderr)
-            record['dropbox_hash'] = dropbox_hash(p)
+            if self.verbose:
+                print("%s, %d" % (str(p), record['size'], ), file=sys.stderr)
+            record['dropbox_hash'] = dropbox_hash(p, verbose=self.verbose)
         
-        if not created or not modified:
-            print('\ncreated or modified is None\n', record, '\n')
+        if (not created or not modified) and self.verbose:
+            print('\ncreated or modified is None\n', record, '\n', file=sys.stderr)
 
         return record
     
@@ -352,6 +352,7 @@ class ZipCrawler():
                     'suffix': self.get_suffix(file_name),
                     'mime_type': None,
                     'mime_encoding': None,
+                    'is_archive': True,
                 }
 
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)

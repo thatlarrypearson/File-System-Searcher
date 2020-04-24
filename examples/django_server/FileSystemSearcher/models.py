@@ -15,4 +15,5 @@ class FileInfo(models.Model):
     suffix = models.CharField(blank=True, verbose_name='suffixes', max_length=64)
     mime_type = models.CharField(blank=True, verbose_name='mime_types', max_length=128)
     mime_encoding = models.CharField(blank=True, verbose_name='mime_encodings', max_length=128)
+    is_archive = models.BooleanField(default=False, verbose_name='are archives')
 

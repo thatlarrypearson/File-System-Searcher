@@ -136,3 +136,13 @@ The following Python libraries need to be added to support running this program:
 ```bash
 python3.8 -m pip install pytz
 ```
+
+## Process Seems To Hang Or Go Into Infinite Loop
+
+On Linux and Unix varients, the FileSystemSearcher process can seem to hang when searching the engire file system.  The problem occurs in the ```dropbox_hash(path, verbose=False)``` function.  This function computes a hash value of the data in the file using the same method as Dropbox uses in their APIs.  Problems occur with files that aren't the same kind of file as a text file.
+
+When file hash values aren't needed, a flag can be set to disable the file hash feature.  However, when hash values are needed, the starting path for ```FileSystemSearcher``` should not include ```/dev``` or ```/proc``` as these paths contain device files that cause reads designed for regular files to fail.
+
+For example, ```/dev/tty01```, typically represents a serial interface device.  In this case, reads would block if there wasn't any input on that serial device.  The program would appear to hang.  Some USB devices would also behave in this way.
+
+Another example, ```/dev/core```, a symbolic link to ```/proc/kcore``` on some Debian based systems, is the virtual allocation of memory in the kernel. On 64 bit systems that size can be an absolute limit of 128T (140,737,477,885,952 bytes) since that is the most the system can allocate.  In theory, the ```dropbox_hash(path, verbose=False)``` function could read through this but in practice, the time it would take could be months or years depending on the processor.

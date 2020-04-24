@@ -1,8 +1,23 @@
 # FileSystemSearcher Django Server
 
+This code is useful for people who might want to place their file system information into a database.
+
+Making this code work requires some Django web framework skills.
+
+## Instructions
+
+- Edit ```server/settings.py``` to configure the database settings.
+
+- Copy ```FileSystemSearcher.py``` from ```../src/``` to ```FileSystemSearcher/```
+
+- Run ```python3.8/manage.py makemigrations FileSystemSearcher```
+
+- Run ```python3.8/manage.py migrate```
+
+- Understand the arguements to ```get_file_system``` by running the following.
 
 ```powershell
-ps> python3.8 manage.py get_file_system --help
+ps> python3.8 manage.py get_file_system --h
 usage: manage.py get_file_system [-h] [--volume VOLUME] [--search_zip_files] [--pictures] [--version] [-v {0,1,2,3}]
                                  [--settings SETTINGS] [--pythonpath PYTHONPATH] [--traceback] [--no-color]
                                  [--force-color] [--skip-checks]
@@ -38,3 +53,4 @@ Then to run this on my Windows 10 machine and just get my pictures from my ```Pi
 ```powershell
 PS> python3.8 manage.py get_file_system --volume widebody_d --search_zip_files --pictures D:\runar\Pictures\
 ```
+
