@@ -23,7 +23,7 @@ from hashlib import sha256
 #     def local_fcntl(fd):
 #         pass
 
-# HASH_BLOCK_SIZE = 4 * 1024 * 1024
+HASH_BLOCK_SIZE = 4 * 1024 * 1024
 
 
 def dropbox_hash(path, verbose=False):
