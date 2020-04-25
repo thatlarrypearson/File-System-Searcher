@@ -25,17 +25,27 @@ class Command(BaseCommand):
                 default=None
             )
         parser.add_argument(
-                "--search_zip_files",
+                "--search_archives",
                 help="Include files found in zip files in results.",
                 default=False,
                 action='store_true'
             )
+        parser.add_arbument(
+            "--no_hash",
+            help="Do NOT generate Dropbox type hashes of files.",
+            default=False,
+            action='store_true'
+        )
 
 
     def handle(self, *args, **options):
+        # volume=None, verbose=False, search_archives=False, hash=True
         crawler = Crawler(
                 volume=options['volume'], 
-                verbose=options['verbosity']
+                verbose=options['verbosity'],
+                search_archives=options['search_archives'],
+                hash=(not options['no_hash'])
+                
             )
 
         for base_path in options['base_paths']:
@@ -58,31 +68,31 @@ class Command(BaseCommand):
                 else:
                     print('\n', form.errors, '\n', record, '\n')
 
-                if options['search_zip_files'] and record['suffix'] in ['.zip', ]:
-                    zcrawler = ZipCrawler(
-                            record['full_path'], 
-                            volume=options['volume'], 
-                            verbose=options['verbosity']
-                        )
+                # if options['search_zip_files'] and record['suffix'] in ['.zip', ]:
+                #     zcrawler = ZipCrawler(
+                #             record['full_path'], 
+                #             volume=options['volume'], 
+                #             verbose=options['verbosity']
+                #         )
 
-                    for record in zcrawler:
-                        for k, v in record.items():
-                            if v is None:
-                                record[k] = ''
+                #     for record in zcrawler:
+                #         for k, v in record.items():
+                #             if v is None:
+                #                 record[k] = ''
 
-                        form = FileInfoForm(record)
+                #         form = FileInfoForm(record)
                         
-                        if form.is_valid():
-                            file_info = form.save(commit=False)
-                            file_info.created = record['created']
-                            file_info.modified = record['modified']
+                #         if form.is_valid():
+                #             file_info = form.save(commit=False)
+                #             file_info.created = record['created']
+                #             file_info.modified = record['modified']
 
-                            try:
-                                file_info.save()
-                            except (OperationalError, DataError) as e:
-                                print('\n', e, '\n', record, '\n')
-                        else:
-                            print('\n', form.errors, '\n', record, '\n')
+                #             try:
+                #                 file_info.save()
+                #             except (OperationalError, DataError) as e:
+                #                 print('\n', e, '\n', record, '\n')
+                #         else:
+                #             print('\n', form.errors, '\n', record, '\n')
 
     
 

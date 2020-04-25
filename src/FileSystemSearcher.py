@@ -7,6 +7,7 @@ import socket
 import json
 import csv
 import zipfile
+import tarfile
 from pathlib import Path, WindowsPath, PurePath
 from platform import uname
 from argparse import ArgumentParser
@@ -40,9 +41,10 @@ def dropbox_hash(path, verbose=False):
 
                 hash_list.append(sha256(chunk).digest())
 
-    except OSError as e:
+    except:
         if verbose:
-            print("\nFileSystemSearcher.dropbox_hash(): {0}".format(e), file=sys.stderr)
+            e = sys.exc_info()[0]
+            print("\nException: {0}".format(e), file=sys.stderr)
             print("File Name: {0}".format(path), file=sys.stderr)
             print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
         return ''
@@ -63,9 +65,10 @@ def zip_dropbox_hash(z_file, zip_name, name, verbose=False):
 
                 hash_list.append(sha256(chunk).digest())
 
-    except (OSError, zipfile.BadZipFile) as e:
+    except:
         if verbose:
-            print("\nOSError: {0}".format(e), file=sys.stderr)
+            e = sys.exc_info()[0]
+            print("\nException: {0}".format(e), file=sys.stderr)
             print("Zip Archive File Name: {0}".format(zip_name), file=sys.stderr)
             print("File Name: {0}".format(name), file=sys.stderr)
             print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
@@ -74,9 +77,52 @@ def zip_dropbox_hash(z_file, zip_name, name, verbose=False):
     hash = sha256(b"".join(hash_list))
     return  hash.hexdigest()
 
+def tar_dropbox_hash(tar, tarinfo, tar_file_name, file_name, verbose=False):
+    hash_list = []
+
+    try:
+        fd = tar.extractfile(tarinfo)
+        while True:
+            chunk = fd.fread(HASH_BLOCK_SIZE)
+            if len(chunk) == 0:
+                break
+
+            hash_list.append(sha256(chunk).digest())
+
+    except:
+        if verbose:
+            e = sys.exc_info()[0]
+            print("\nException: {0}".format(e), file=sys.stderr)
+            print("Tar Archive File Name: {0}".format(tar_file_name), file=sys.stderr)
+            print("File Name: {0}".format(file_name), file=sys.stderr)
+            print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+        return ''
+ 
+    hash = sha256(b"".join(hash_list))
+    return  hash.hexdigest()
 
 def convert_datetime_to_utc(dt):
     return pytz.utc.localize(dt)
+
+ZIP_FILE_SUFFIXES = [
+    '.zip', '.7z',
+]
+
+def is_zip_file(file_name):
+    for suffix in ZIP_FILE_SUFFIXES:
+        if file_name.endswith(suffix):
+            return True
+    return False
+
+TAR_FILE_SUFFIXES = [
+    '.tar', '.tgz', '.tar.bz2', 'tar.gz',
+]
+
+def is_tar_file(file_name):
+    for suffix in TAR_FILE_SUFFIXES:
+        if file_name.endswith(suffix):
+            return True
+    return False
 
 
 class Publish():
@@ -167,14 +213,18 @@ class Publish():
 
 
 class Crawler():
-    def __init__(self, volume=None, verbose=False, zip_file=False, hash=True):
+    def __init__(self, volume=None, verbose=False, search_archives=False, hash=True):
         self.current_working_directory = Path.cwd()
         self.volume = volume
         self.verbose = verbose
         self.hostname = socket.gethostname()
         self.base_path = None
-        self.zip_file = zip_file
         self.hash = hash
+        self.mode = 'Crawler'
+        self.zip_crawler = None
+        self.tar_crawler = None
+        self.archive_name = None
+        self.search_archives = search_archives
 
     def base_to_absolute_path(self, base_path):
         if base_path is None:
@@ -200,8 +250,48 @@ class Crawler():
         self.path_iterator = self.base_path.glob('**/*')
         self.path_iterator.__init__()
         return self
-
+    
     def __next__(self):
+        if self.mode == 'Crawler':
+            record = self.next_crawler()
+            if self.search_archives and is_tar_file(record['file_name']):
+                self.mode = 'TarCrawler'
+            elif self.search_archives and is_zip_file(record['file_name']):
+                self.mode = 'ZipCrawler'
+            return record
+        elif self.mode == 'TarCrawler':
+            if not self.tar_crawler:
+                self.tar_crawler = TarCrawler(
+                    record['full_path'], volume=self.volume, verbose=self.verbose, hash=self.hash
+                )
+                self.tar_crawler = self.tar_crawler.__iter__()
+            try:
+                record = self.tar_crawler.__next__()
+                if record is None:
+                    raise StopIteration()
+                return record
+            except StopIteration:
+                self.mode = 'Crawler'
+                self.tar_crawler = None
+                return self.__next__()
+        elif self.mode == 'ZipCrawler':
+            if not self.zip_crawler:
+                self.zip_crawler = ZipCrawler(
+                    record['full_path'], volume=self.volume, verbose=self.verbose, hash=self.hash
+                )
+                self.zip_crawler = self.zip_crawler.__iter__()
+            try:
+                record = self.zip_crawler.__next__()
+                if record is None:
+                    raise StopIteration()
+                return record
+            except StopIteration:
+                self.mode = 'Crawler'
+                self.zip_crawler = None
+                return self.__next__()
+        raise StopIteration()
+
+    def next_crawler(self):
         p = None
         failures = 0
         is_file = False
@@ -212,6 +302,7 @@ class Crawler():
                 try:
                     is_file = p.is_file()
                 except PermissionError as e:
+                    is_file = False
                     if self.verbose:
                         print("\nException: {0}".format(e), file=sys.stderr)
                         print("Crawler.__next__(): pathlib Path.is_file() failure on base_path: {0}\n".format(self.base_path),
@@ -228,7 +319,7 @@ class Crawler():
                     print(
                         "Crawler.__next__() {0} iterator failures on base_path: {1}\n".format(failures, self.base_path),
                         file=sys.stderr)
-                if failures > 100:
+                if failures > 10:
                     # This might be overkill.
                     # Generally when these exceptions occur, the iterator is done and won't restart on the first try.
                     raise StopIteration()
@@ -249,7 +340,7 @@ class Crawler():
             'suffix': p.suffix,
             'mime_type': None,
             'mime_encoding': None,
-            'is_archve': True,
+            'is_archive': False,
         }
 
         record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
@@ -298,12 +389,13 @@ class ZipCrawler():
             self.z_file = zipfile.ZipFile(self.base_path)
             self.z_name_iter = iter(self.z_file.namelist())
 
-        except (OSError, zipfile.BadZipFile) as e:
-            # Zip file is damaged and/or otherwise unreadable.
+        except:
+            # Zip file may be damaged and/or otherwise unreadable.
             self.stop_iterator = True
             if self.verbose:
-                print("\nzipfile.BadZipFile: {0}".format(e), file=sys.stderr)
-                print("ZipCrawler.__iter__(): Exception: BadZipFile: {0}\n".format(self.base_path), file=sys.stderr)
+                e = sys.exc_info()[0]
+                print("\nException: {0}".format(e), file=sys.stderr)
+                print("Tar Archive File: {0}\n".format(self.base_path), file=sys.stderr)
 
         return self
     
@@ -383,6 +475,106 @@ class ZipCrawler():
         parts = name.split('.')
         return parts[-1]
 
+class TarCrawler():
+    def __init__(self, tar_file_path, volume, verbose=False, hash=True):
+        self.file = tar_file_path
+        self.current_working_directory = Path.cwd()
+        self.volume = volume
+        self.verbose = verbose
+        self.hostname = socket.gethostname()
+        self.base_path = tar_file_path
+        self.stop_iterator = False
+        self.hash = hash
+
+    def __iter__(self):
+        try:
+            # open archive and prepare to iterate
+            self.tar = tarfile.open(self.base_path)
+            self.tar_iter = iter(self.tar)
+
+        except:
+            # Zip file is damaged and/or otherwise unreadable.
+            self.stop_iterator = True
+            if self.verbose:
+                e = sys.exc_info()[0]
+                print("\nException: {0}".format(e), file=sys.stderr)
+                print("Tar Archive File Name: {0}".format(self.file), file=sys.stderr)
+
+        return self
+    
+    def __next__(self):
+        if self.stop_iterator:
+            raise StopIteration()
+        try:
+            # name is really a path within the archive
+            tarinfo = self.tar_iter.__next__()
+
+            # skip directories
+            while not tarinfo.isfile():
+                tarinfo = self.tar_iter.__next__()
+            
+            file_name = self.get_file_name(tarinfo.name)
+
+            try:
+                utc_dt = (convert_datetime_to_utc(datetime.fromtimestamp(tarinfo.mtime))).isoformat()
+            except ValueError as e:
+                # some tar file date records may have out-of-bound values
+                # these should show up as 0001-01-01
+                utc_dt = (convert_datetime_to_utc(datetime(MINYEAR, 1, 1))).isoformat()
+            except:
+                e = sys.exc_info()[0]
+                print("\nException: {0}".format(e), file=sys.stderr)
+                print("Tar Archive File Name: {0}".format(self.file), file=sys.stderr)
+                print("tarinfo.mtime:", tarinfo.mtime, file=sys.stderr)
+               
+
+            full_path = self.file + os.path.sep + file_name
+            if os.path.sep == "\\":
+                full_path = full_path.replace('/', "\\")
+            record = {
+                    'hostname': self.hostname,
+                    'volume': self.volume,
+                    'file_name': file_name,
+                    'relative_path': file_name,
+                    'full_path': full_path,
+                    'size': tarinfo.size,
+                    'dropbox_hash': '',
+                    'created': utc_dt,
+                    'modified': utc_dt,
+                    'suffix': self.get_suffix(file_name),
+                    'mime_type': None,
+                    'mime_encoding': None,
+                    'is_archive': True,
+                }
+
+            record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
+
+            if hash and record['size'] > 0:
+                record['dropbox_hash'] = tar_dropbox_hash(self.tar, tarinfo, self.file, tarinfo.name, verbose=self.verbose)
+
+        except (OSError, zipfile.BadZipFile) as e:
+            if self.verbose:
+                print("\nzipfile.BadZipFile: {0}".format(e), file=sys.stderr)
+                print("ZipCrawler.__next__(): Exception: BadZipFile: {0}\n".format(self.base_path), file=sys.stderr)
+            raise StopIteration()
+
+        return record
+
+    def get_suffix(self, file_name):
+        if "." not in file_name:
+            return None
+        parts = file_name.split('.')
+        if len(parts[-1]) > 15:
+            return None
+        return parts[-1]
+
+    def get_file_name(self, name):
+        name = str(name)
+        if "/" not in name:
+            return name
+        parts = name.split('.')
+        return parts[-1]
+
 
 def main_loop(args, publish):
     crawler = Crawler(volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
@@ -396,11 +588,16 @@ def main_loop(args, publish):
             else:
                 publish.body(record)
 
-            if args['search_zip_files'] and record['suffix'] in ['.zip', ]:
-                zcrawler = ZipCrawler(record['full_path'], volume=args['volume'], verbose=args['verbose'])
-
-                for record in zcrawler:
-                    publish.body(record)
+            # if args['search_archives'] and is_tar_file(record['file_name']):
+            #     tcrawler = TarCrawler(
+            #         record['full_path'], volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
+            #     for record in tcrawler:
+            #         publish.body(record)
+            # if args['search_archives'] and is_zip_file(record['file_name']):
+            #     zcrawler = ZipCrawler(
+            #         record['full_path'], volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
+            #     for record in zcrawler:
+            #         publish.body(record)
 
     publish.footer()
 
@@ -428,11 +625,11 @@ def main():
             "--output_format",
             help="Output format",
             choices=["txt", "csv", "json", ],
-            default="txt"
+            default="json"
         )
     parser.add_argument(
-            "--search_zip_files",
-            help="Include files found in zip files in results.",
+            "--search_archives",
+            help="Include files found in archives (zip, tar) in results.",
             default=False,
             action='store_true'
         )
