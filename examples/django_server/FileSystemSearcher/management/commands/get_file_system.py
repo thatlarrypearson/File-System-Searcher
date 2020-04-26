@@ -30,7 +30,7 @@ class Command(BaseCommand):
                 default=False,
                 action='store_true'
             )
-        parser.add_arbument(
+        parser.add_argument(
             "--no_hash",
             help="Do NOT generate Dropbox type hashes of files.",
             default=False,

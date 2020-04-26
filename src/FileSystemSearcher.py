@@ -83,7 +83,7 @@ def tar_dropbox_hash(tar, tarinfo, tar_file_name, file_name, verbose=False):
     try:
         fd = tar.extractfile(tarinfo)
         while True:
-            chunk = fd.fread(HASH_BLOCK_SIZE)
+            chunk = fd.read(HASH_BLOCK_SIZE)
             if len(chunk) == 0:
                 break
 
@@ -225,6 +225,7 @@ class Crawler():
         self.tar_crawler = None
         self.archive_name = None
         self.search_archives = search_archives
+        self.archive_record = None
 
     def base_to_absolute_path(self, base_path):
         if base_path is None:
@@ -254,15 +255,19 @@ class Crawler():
     def __next__(self):
         if self.mode == 'Crawler':
             record = self.next_crawler()
+            self.archive_record = None
             if self.search_archives and is_tar_file(record['file_name']):
                 self.mode = 'TarCrawler'
+                self.archive_record = record
             elif self.search_archives and is_zip_file(record['file_name']):
                 self.mode = 'ZipCrawler'
+                self.archive_record = record
             return record
         elif self.mode == 'TarCrawler':
             if not self.tar_crawler:
                 self.tar_crawler = TarCrawler(
-                    record['full_path'], volume=self.volume, verbose=self.verbose, hash=self.hash
+                    self.archive_record['full_path'],
+                    volume=self.volume, verbose=self.verbose, hash=self.hash
                 )
                 self.tar_crawler = self.tar_crawler.__iter__()
             try:
@@ -273,11 +278,13 @@ class Crawler():
             except StopIteration:
                 self.mode = 'Crawler'
                 self.tar_crawler = None
+                self.archive_record = None
                 return self.__next__()
         elif self.mode == 'ZipCrawler':
             if not self.zip_crawler:
                 self.zip_crawler = ZipCrawler(
-                    record['full_path'], volume=self.volume, verbose=self.verbose, hash=self.hash
+                    self.archive_record['full_path'],
+                    volume=self.volume, verbose=self.verbose, hash=self.hash
                 )
                 self.zip_crawler = self.zip_crawler.__iter__()
             try:
@@ -288,6 +295,7 @@ class Crawler():
             except StopIteration:
                 self.mode = 'Crawler'
                 self.zip_crawler = None
+                self.archive_record = None
                 return self.__next__()
         raise StopIteration()
 
@@ -345,9 +353,10 @@ class Crawler():
 
         record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
 
+        if self.verbose:
+            print("%s, %d" % (record['full_path'], record['size'], ), file=sys.stderr)
+
         if self.hash and record['size'] > 0:
-            if self.verbose:
-                print("%s, %d" % (str(p), record['size'], ), file=sys.stderr)
             record['dropbox_hash'] = dropbox_hash(p, verbose=self.verbose)
         
         if (not created or not modified) and self.verbose:
@@ -449,6 +458,9 @@ class ZipCrawler():
 
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
 
+            if self.verbose:
+                print("%s, %d" % (record['full_path'], record['size'], ), file=sys.stderr)
+
             if hash and record['size'] > 0:
                 record['dropbox_hash'] = zip_dropbox_hash(self.z_file, self.file, name)
 
@@ -497,7 +509,7 @@ class TarCrawler():
             self.stop_iterator = True
             if self.verbose:
                 e = sys.exc_info()[0]
-                print("\nException: {0}".format(e), file=sys.stderr)
+                print("\n__iter__(): Exception: {0}".format(e), file=sys.stderr)
                 print("Tar Archive File Name: {0}".format(self.file), file=sys.stderr)
 
         return self
@@ -523,7 +535,7 @@ class TarCrawler():
                 utc_dt = (convert_datetime_to_utc(datetime(MINYEAR, 1, 1))).isoformat()
             except:
                 e = sys.exc_info()[0]
-                print("\nException: {0}".format(e), file=sys.stderr)
+                print("\n__next(): Exception: {0}".format(e), file=sys.stderr)
                 print("Tar Archive File Name: {0}".format(self.file), file=sys.stderr)
                 print("tarinfo.mtime:", tarinfo.mtime, file=sys.stderr)
                
@@ -549,13 +561,19 @@ class TarCrawler():
 
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
 
+            if self.verbose:
+                print("%s, %d" % (record['full_path'], record['size'], ), file=sys.stderr)
+
             if hash and record['size'] > 0:
                 record['dropbox_hash'] = tar_dropbox_hash(self.tar, tarinfo, self.file, tarinfo.name, verbose=self.verbose)
 
-        except (OSError, zipfile.BadZipFile) as e:
+        except StopIteration:
+            raise StopIteration()
+        except:
             if self.verbose:
-                print("\nzipfile.BadZipFile: {0}".format(e), file=sys.stderr)
-                print("ZipCrawler.__next__(): Exception: BadZipFile: {0}\n".format(self.base_path), file=sys.stderr)
+                e = sys.exc_info()[0]
+                print("\n__next__() {0}".format(e), file=sys.stderr)
+                print("TarCrawler.__next__(): tar_file: {0}\n".format(self.base_path), file=sys.stderr)
             raise StopIteration()
 
         return record
