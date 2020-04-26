@@ -110,7 +110,7 @@ ZIP_FILE_SUFFIXES = [
 
 def is_zip_file(file_name):
     for suffix in ZIP_FILE_SUFFIXES:
-        if file_name.endswith(suffix):
+        if file_name.lower().endswith(suffix):
             return True
     return False
 
@@ -120,7 +120,7 @@ TAR_FILE_SUFFIXES = [
 
 def is_tar_file(file_name):
     for suffix in TAR_FILE_SUFFIXES:
-        if file_name.endswith(suffix):
+        if file_name.lower().endswith(suffix):
             return True
     return False
 
