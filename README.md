@@ -32,13 +32,13 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
     The output is put into a ```list()``` of records composed of dictionaries - ```dict()```.  The output is then converted into JSON format.
 
-* ```--zip_file_search```
+* ```--search_archives```
 
-  Include files found in zip files in results.  Otherwise, zip files will only be noted.  When enabled, ```relative_path``` is relative to the zip archive.  ```full_path``` treats the zip archive file as a directory in the path to the archived file.
+  Include files found in zip and tar archives in results.  Otherwise, archive files will only be noted.  When enabled, ```relative_path``` is relative to the zip archive.  ```full_path``` treats the zip archive file as a directory in the path to the archived file.
 
 * ```--no_hash```
 
-  Do not generate ```dropbox_hash``` values in the output records.  Default is to generate ```dropbox_hash``` values.
+  Do not generate ```dropbox_hash``` values in the output records.  Default is to generate ```dropbox_hash``` values.  Using this option will significantly speed up file system searches.
 
 ### Base Paths
 
@@ -57,15 +57,15 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
 * file_name
 
-  The file name indipeneent of where it sits within the file system.
+  The file name without directory/folder location.
 
 * relative_path
 
-  The directory path from the base path to the directory the file sits in.
+  The directory/folder path from the base path directory/folder to the directory/folder the file sits in.
 
 * base_path
 
-  The "base path" is the full path to the directory where the search for files started.
+  The "base path" is the full path to the directory/folder where the search for files started.
 
 * size
 
@@ -73,7 +73,7 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
 * dropbox_hash
 
-  A hash of hashes made using the same method that Dropbox uses in their public API's.
+  A hash of hashes made using the same method that Dropbox uses in their public API's.  This hash is sufficient to uniquely identify files having the same contents.   Matching records based on hashes is one way to find duplicate files within a large set of files.
 
 * created
 
@@ -91,9 +91,13 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
   MIME type is determined by [Python ```mimetypes```](https://docs.python.org/3/library/mimetypes.html)
 
-* MIME encoding
+* mime_encoding
 
-  Encoding is determined by [Python ```mimetypes```](https://docs.python.org/3/library/mimetypes.html)
+  MIME encoding is determined by [Python ```mimetypes```](https://docs.python.org/3/library/mimetypes.html)
+
+* is_archive
+
+  Used to identify records generated from an archive file contents.  That is, ```is_archive``` is true when the file came from an archive.
 
 ## File Formats
 
@@ -139,10 +143,42 @@ python3.8 -m pip install pytz
 
 ## Process Seems To Hang Or Go Into Infinite Loop
 
-On Linux and Unix varients, the FileSystemSearcher process can seem to hang when searching the engire file system.  The problem occurs in the ```dropbox_hash(path, verbose=False)``` function.  This function computes a hash value of the data in the file using the same method as Dropbox uses in their APIs.  Problems occur with files that aren't the same kind of file as a text file.
+On Linux and Unix varients, the FileSystemSearcher process can seem to hang when searching the entire file system.  The problem occurs in the ```dropbox_hash(path, verbose=False)``` function.  This function computes a hash value of the data in the file using the same method as Dropbox uses in their APIs.  Problems occur with files that aren't the same kind of file as a persistant storage file.
 
 When file hash values aren't needed, a flag can be set to disable the file hash feature.  However, when hash values are needed, the starting path for ```FileSystemSearcher``` should not include ```/dev``` or ```/proc``` as these paths contain device files that cause reads designed for regular files to fail.
 
 For example, ```/dev/tty01```, typically represents a serial interface device.  In this case, reads would block if there wasn't any input on that serial device.  The program would appear to hang.  Some USB devices would also behave in this way.
 
 Another example, ```/dev/core```, a symbolic link to ```/proc/kcore``` on some Debian based systems, is the virtual allocation of memory in the kernel. On 64 bit systems that size can be an absolute limit of 128T (140,737,477,885,952 bytes) since that is the most the system can allocate.  In theory, the ```dropbox_hash(path, verbose=False)``` function could read through this but in practice, the time it would take could be months or years depending on the processor.
+
+## Process Killed Without Error Message
+
+On systems with strong security controls, access attempts on priveldged files can cause the operating system or antivirus software to kill the offending program.  One example is on Windows 10 when reading a home directory.  Windows 10 home directories contain ```NTUSER.DAT``` and similarly named files.  Attempts to read this file in the ```hash``` functions initiates a defensive response by antivirus software.  The antivirus software kills the reader - this program.
+
+## Getting Arguments
+
+```powershell
+PS C:\Users\runar\Dropbox\src\FileSystemSearcher\src> python3.8 .\FileSystemSearcher.py --help
+usage: FileSystemSearcher.py [-h] [-v] [--output_file OUTPUT_FILE] [--volume VOLUME] [--output_format {txt,csv,json}]
+                             [--search_archives] [--no_hash]
+                             [base_path [base_path ...]]
+
+File System Searcher - Search for files and output records with useful info.
+
+positional arguments:
+  base_path             Relative or absolute directory path where the file search begins. Default: current working
+                        directory.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -v, --verbose         Enable verbose mode
+  --output_file OUTPUT_FILE
+                        Output file name.
+  --volume VOLUME       Output the user provided volume name with all output records. Used to help users associate
+                        external USB drives with records.
+  --output_format {txt,csv,json}
+                        Output format
+  --search_archives     Include files found in archives (zip, tar) in results.
+  --no_hash             Turn of dropbox_hash generation.
+PS C:\Users\runar\Dropbox\src\FileSystemSearcher\src>
+```

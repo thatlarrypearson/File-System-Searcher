@@ -14,18 +14,7 @@ from argparse import ArgumentParser
 from datetime import datetime, MINYEAR
 from hashlib import sha256
 
-# try:
-#     import fcntl
-#     def local_fcntl(fd):
-#         orig_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-#         fcntl.fcntl(fd, fcntl.F_SETFL, orig_flags | os.O_NONBLOCK)
-
-# except ImportError:
-#     def local_fcntl(fd):
-#         pass
-
 HASH_BLOCK_SIZE = 4 * 1024 * 1024
-
 
 def dropbox_hash(path, verbose=False):
     hash_list = []
@@ -33,7 +22,6 @@ def dropbox_hash(path, verbose=False):
     try:
         # no buffering - otherwise read fails on large files - HASH_BLOCK_SIZE > default buffer size
         with open(path, 'rb', 0) as fd:
-            # local_fcntl(fd)
             while True:
                 chunk = fd.read(HASH_BLOCK_SIZE)
                 if not chunk or len(chunk) == 0:
@@ -105,7 +93,7 @@ def convert_datetime_to_utc(dt):
     return pytz.utc.localize(dt)
 
 ZIP_FILE_SUFFIXES = [
-    '.zip', '.7z',
+    '.zip',
 ]
 
 def is_zip_file(file_name):
@@ -304,8 +292,6 @@ class Crawler():
         failures = 0
         is_file = False
         while not p or not is_file:
-            # for things that are not files:
-            # verbose print the type of thing it is (str(type(p).__name__)) followed by the path
             if p:
                 try:
                     is_file = p.is_file()
@@ -313,7 +299,7 @@ class Crawler():
                     is_file = False
                     if self.verbose:
                         print("\nException: {0}".format(e), file=sys.stderr)
-                        print("Crawler.__next__(): pathlib Path.is_file() failure on base_path: {0}\n".format(self.base_path),
+                        print("Crawler.next_crawler(): Permission Problem At: {0}\n".format(self.base_path),
                             file=sys.stderr)
             if p and is_file:
                 break
@@ -325,7 +311,7 @@ class Crawler():
                 if self.verbose:
                     print("\nException: {0}".format(e), file=sys.stderr)
                     print(
-                        "Crawler.__next__() {0} iterator failures on base_path: {1}\n".format(failures, self.base_path),
+                        "Crawler.__next__() {0} iterator failures at {1}\n".format(failures, self.base_path),
                         file=sys.stderr)
                 if failures > 10:
                     # This might be overkill.
@@ -434,7 +420,7 @@ class ZipCrawler():
                     ))).isoformat()
             except ValueError as e:
                 # some zip file date records have out-of-bound values
-                # this value should show up as 0001-01-01
+                # out-of-bounds value will show up as 0001-01-01
                 utc_dt = (convert_datetime_to_utc(datetime(MINYEAR, 1, 1))).isoformat()
 
             full_path = self.file + os.path.sep + name
@@ -466,8 +452,8 @@ class ZipCrawler():
 
         except (OSError, zipfile.BadZipFile) as e:
             if self.verbose:
-                print("\nzipfile.BadZipFile: {0}".format(e), file=sys.stderr)
-                print("ZipCrawler.__next__(): Exception: BadZipFile: {0}\n".format(self.base_path), file=sys.stderr)
+                print("\nException: {0}".format(e), file=sys.stderr)
+                print("ZipCrawler.__next__(): Zip File Name {0}\n".format(self.base_path), file=sys.stderr)
             raise StopIteration()
 
         return record
@@ -606,17 +592,6 @@ def main_loop(args, publish):
             else:
                 publish.body(record)
 
-            # if args['search_archives'] and is_tar_file(record['file_name']):
-            #     tcrawler = TarCrawler(
-            #         record['full_path'], volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
-            #     for record in tcrawler:
-            #         publish.body(record)
-            # if args['search_archives'] and is_zip_file(record['file_name']):
-            #     zcrawler = ZipCrawler(
-            #         record['full_path'], volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
-            #     for record in zcrawler:
-            #         publish.body(record)
-
     publish.footer()
 
 
@@ -674,5 +649,4 @@ def main():
     publish.close()
 
 if __name__ == "__main__":
-    # execute only if run as a script
     main()

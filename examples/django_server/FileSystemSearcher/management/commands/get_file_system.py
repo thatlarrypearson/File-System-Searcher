@@ -68,31 +68,6 @@ class Command(BaseCommand):
                 else:
                     print('\n', form.errors, '\n', record, '\n')
 
-                # if options['search_zip_files'] and record['suffix'] in ['.zip', ]:
-                #     zcrawler = ZipCrawler(
-                #             record['full_path'], 
-                #             volume=options['volume'], 
-                #             verbose=options['verbosity']
-                #         )
-
-                #     for record in zcrawler:
-                #         for k, v in record.items():
-                #             if v is None:
-                #                 record[k] = ''
-
-                #         form = FileInfoForm(record)
-                        
-                #         if form.is_valid():
-                #             file_info = form.save(commit=False)
-                #             file_info.created = record['created']
-                #             file_info.modified = record['modified']
-
-                #             try:
-                #                 file_info.save()
-                #             except (OperationalError, DataError) as e:
-                #                 print('\n', e, '\n', record, '\n')
-                #         else:
-                #             print('\n', form.errors, '\n', record, '\n')
 
     
 
