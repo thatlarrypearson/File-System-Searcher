@@ -1,6 +1,6 @@
 # File System Searcher
 
-Searches for files starting at the given path and outputs records with a variety of useful fields.
+Search for files starting at the given path and output records with useful information.  Can be used as a command line program or as an iterable class in a ```for``` loop in a Python program.
 
 ## Usage
 
@@ -18,23 +18,23 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
 * ```--output_format=format```
 
-  Output format or can be one of ```text```,  ```CSV``` or ```JSON```.
+  Output format or can be one of ```text```,  ```csv``` or ```json```.
 
   * ```text```
 
-    Simplistic report format
+    Simplistic report format.
 
-  * ```CSV```
+  * ```csv```
 
-    ```|``` seperated values that can be imported by Microsoft Excel and Access.  See the Python [csv](https://docs.python.org/3/library/csv.html) library.
+    ```|``` seperated values that can be imported by Microsoft Excel and Access.  See the Python [CSV](https://docs.python.org/3/library/csv.html) library.
 
-  * ```JSON```
+  * ```json```
 
-    The output is put into a ```list()``` of records composed of dictionaries - ```dict()```.  The output is then converted into JSON format.
+    JSON format means that each individual record is encoded in JSON format and each record is terminated by ```<CR><LF>``` on Windows or ```<LF>``` on Unix/Linux and variants.
 
 * ```--search_archives```
 
-  Include files found in zip and tar archives in results.  Otherwise, archive files will only be noted.  When enabled, ```relative_path``` is relative to the zip archive.  ```full_path``` treats the zip archive file as a directory in the path to the archived file.
+  Include files found in zip (```'.zip'```) and tar (```'.tar'```, ```'.tgz'```, ```'.tar.bz2'``` and ```'tar.gz'```) archives in results.  Otherwise, archive files will only be noted.  When enabled, ```relative_path``` is relative to the zip archive.  ```full_path``` treats the zip archive file as a directory in the path to the archived file.
 
 * ```--no_hash```
 
@@ -97,9 +97,9 @@ FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
 
 * is_archive
 
-  Used to identify records generated from an archive file contents.  That is, ```is_archive``` is true when the file came from an archive.
+  Used to identify records generated from an archive file's contents.  That is, ```is_archive``` is true when the file came from an archive.
 
-## File Formats
+## Output File Formats
 
 * CSV
 
@@ -131,7 +131,7 @@ The software has been tested on:
   * Python 3.7
   * Python 3.6
 
-## Requierd Python Libraries
+## Required Python Libraries
 
 The following Python libraries need to be added to support running this program:
 
@@ -151,6 +151,17 @@ For example, ```/dev/tty01```, typically represents a serial interface device.  
 
 Another example, ```/dev/core```, a symbolic link to ```/proc/kcore``` on some Debian based systems, is the virtual allocation of memory in the kernel. On 64 bit systems that size can be an absolute limit of 128T (140,737,477,885,952 bytes) since that is the most the system can allocate.  In theory, the ```dropbox_hash(path, verbose=False)``` function could read through this but in practice, the time it would take could be months or years depending on the processor.
 
+## Searching Apple Mac ```Time Machine``` Backups From Linux Systems
+
+After mounting an Apple Mac backup volume on a Linux Mint version 19.3 system, searching the entire backup volume introduced data errors on a specific volume root directory.  When limiting the search to another directory, the results were as expected.
+
+Avoid ```.HFS+ Private Directory Data<CTRL-M>/```.  In the results, ```relative_path``` and ```full_path``` are completely wrong.
+
+* relative_path is missing ```/<file-name>```.
+* full_path is missing ```<base-path>/``` and ```/<file-name```.
+
+The directory ```Backups.backupdb/``` in the root of the backup file system processes correctly with the expected results.  This is the directory containing the backups.
+
 ## Process Killed Without Error Message
 
 On systems with strong security controls, access attempts on priveldged files can cause the operating system or antivirus software to kill the offending program.  One example is on Windows 10 when reading a home directory.  Windows 10 home directories contain ```NTUSER.DAT``` and similarly named files.  Attempts to read this file in the ```hash``` functions initiates a defensive response by antivirus software.  The antivirus software kills the reader - this program.
@@ -158,7 +169,7 @@ On systems with strong security controls, access attempts on priveldged files ca
 ## Getting Arguments
 
 ```powershell
-PS C:\Users\runar\Dropbox\src\FileSystemSearcher\src> python3.8 .\FileSystemSearcher.py --help
+PS C:\Users\human\Dropbox\src\FileSystemSearcher\src> python3.8 .\FileSystemSearcher.py --help
 usage: FileSystemSearcher.py [-h] [-v] [--output_file OUTPUT_FILE] [--volume VOLUME] [--output_format {txt,csv,json}]
                              [--search_archives] [--no_hash]
                              [base_path [base_path ...]]
@@ -180,5 +191,30 @@ optional arguments:
                         Output format
   --search_archives     Include files found in archives (zip, tar) in results.
   --no_hash             Turn of dropbox_hash generation.
-PS C:\Users\runar\Dropbox\src\FileSystemSearcher\src>
+PS C:\Users\human\Dropbox\src\FileSystemSearcher\src>
+```
+
+## Class ```Crawler(base_path=None, volume=None, verbose=False, search_archives=False, hash=True)```
+
+Where
+
+* ```base_path``` (required) is the full or relative path to where the search should start.
+
+* ```volume``` defaults to None and can be any string that represents the physical hard drive or host machine the file search was conducted on.
+
+* ```verbose```, when ```True```, will output extra information helpful in following progress and failures.
+
+* ```search_archives```, when ```True```, will cause archive files to be searched in the same way that a file system is searched providing similar output.
+
+* ```hash```, when ```True```, the default, causes hash values to be generated for each file in the output.
+
+### Example Class Usage
+
+```python
+from file_system_searcher import Crawler
+
+crawler = Crawler(base_path='.')
+
+for record in crawler:
+  print record
 ```
