@@ -2,9 +2,11 @@
 
 Search for files starting at the given path and output records with useful information.  Can be used as a command line program or as an iterable class in a ```for``` loop in a Python program.
 
-## Usage
+## Script Usage
 
-FileSystemSearcher \[options\] \[base_path1 \[base_path2\] ... \]
+```text
+python3.8 -m file_system_searcher.py \[options\] \[base_path1 \[base_path2\] ... \]
+```
 
 ### \[options\]
 
@@ -141,6 +143,38 @@ The following Python libraries need to be added to support running this program:
 python3.8 -m pip install pytz
 ```
 
+## Installation
+
+### Developer Mode Install
+
+Developers who wish to modify the code can clone from ```github``` and install with pip.  This enables changes made in the code to appear immediately as though they were happening in the library.
+
+```bash
+python3.8 -m pip install pip --upgrade
+python3.8 -m pip install setuptools --upgrade
+python3.8 -m pip install wheel --upgrade
+python3.8 -m pip install pytz --upgrade
+git clone https://github.com/thatlarrypearson/File-System-Searcher.git
+cd File-System-Searcher
+python3.8 -m pip install -e .
+```
+
+### Check Installation
+
+Launch the ```python``` interpreter ```python3.8``.`
+
+```python
+from file_system_searcher import Crawler
+```
+
+An alternative to the above approach is to simply run the program as shown below.
+
+```PowerShell
+python3.8 -m file_system_searcher --help
+```
+
+No errors?  You are installed!
+
 ## Process Seems To Hang Or Go Into Infinite Loop
 
 On Linux and Unix varients, the FileSystemSearcher process can seem to hang when searching the entire file system.  The problem occurs in the ```dropbox_hash(path, verbose=False)``` function.  This function computes a hash value of the data in the file using the same method as Dropbox uses in their APIs.  Problems occur with files that aren't the same kind of file as a persistant storage file.
@@ -169,8 +203,8 @@ On systems with strong security controls, access attempts on priveldged files ca
 ## Getting Arguments
 
 ```powershell
-PS C:\Users\human\Dropbox\src\FileSystemSearcher\src> python3.8 .\FileSystemSearcher.py --help
-usage: FileSystemSearcher.py [-h] [-v] [--output_file OUTPUT_FILE] [--volume VOLUME] [--output_format {txt,csv,json}]
+PS C:\Users\human\Dropbox\src\FileSystemSearcher\src> python3.8 -m file_system_searcher.py --help
+usage: file_system_searcher.py [-h] [-v] [--output_file OUTPUT_FILE] [--volume VOLUME] [--output_format {txt,csv,json}]
                              [--search_archives] [--no_hash]
                              [base_path [base_path ...]]
 

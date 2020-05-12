@@ -1,4 +1,4 @@
-# FileSystemSearcher.py
+# file_system_searcher.py
 import os
 import sys
 import pytz
