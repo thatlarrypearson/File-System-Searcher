@@ -1,25 +1,13 @@
 from setuptools import setup, find_packages
 setup(
-    name="file_system_searcher",
-    version="0.1",
-
-    packages=find_packages('src'),
-    package_dir={
-        "": "src",
-    },
-    package_data={
-        "": ["*.md",],
-    },
-
+    name="file-system-searcher",
+    version="0.3",
+    py_modules=['file_system_searcher', ],
+    python_requires='>=3.6',
     install_requires=['pytz',],
 
-    entry_points={
-    },
-
-    python_requires='>=3.6',
-
     author="Larry Pearson",
-    author_email="ThatLarryPearson@gmail.com",
+    author_email="DoNotReply@gmail.com",
     license='MIT',
     description="Library and script to search directories (including archives) to collect and output file metadata.",
     long_description_content_type="text/markdown",

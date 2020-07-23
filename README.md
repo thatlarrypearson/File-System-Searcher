@@ -156,7 +156,7 @@ python3.8 -m pip install wheel --upgrade
 python3.8 -m pip install pytz --upgrade
 git clone https://github.com/thatlarrypearson/File-System-Searcher.git
 cd File-System-Searcher
-python3.8 setup.py sdist
+python3.8 setup.py build
 python3.8 -m pip install -e .
 ```
 

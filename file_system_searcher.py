@@ -32,9 +32,9 @@ def dropbox_hash(path, verbose=False):
     except:
         if verbose:
             e = sys.exc_info()[0]
-            print("\nException: {0}".format(e), file=sys.stderr)
-            print("File Name: {0}".format(path), file=sys.stderr)
-            print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+            print(f"\nException: {e}", file=sys.stderr)
+            print(f"File Name: {path}", file=sys.stderr)
+            print(f"Hash List Length: {len(hash_list)}\n", file=sys.stderr)
         return ''
     
     hash = sha256(b"".join(hash_list))
@@ -56,10 +56,10 @@ def zip_dropbox_hash(z_file, zip_name, name, verbose=False):
     except:
         if verbose:
             e = sys.exc_info()[0]
-            print("\nException: {0}".format(e), file=sys.stderr)
-            print("Zip Archive File Name: {0}".format(zip_name), file=sys.stderr)
-            print("File Name: {0}".format(name), file=sys.stderr)
-            print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+            print(f"\nException: {e}", file=sys.stderr)
+            print(f"Zip Archive File Name: {zip_name}", file=sys.stderr)
+            print(f"File Name: {name}", file=sys.stderr)
+            print(f"Hash List Length: {len(hash_list)}\n", file=sys.stderr)
         return ''
  
     hash = sha256(b"".join(hash_list))
@@ -80,10 +80,10 @@ def tar_dropbox_hash(tar, tarinfo, tar_file_name, file_name, verbose=False):
     except:
         if verbose:
             e = sys.exc_info()[0]
-            print("\nException: {0}".format(e), file=sys.stderr)
-            print("Tar Archive File Name: {0}".format(tar_file_name), file=sys.stderr)
-            print("File Name: {0}".format(file_name), file=sys.stderr)
-            print("Hash List Length: {0}\n".format(len(hash_list)), file=sys.stderr)
+            print(f"\nException: {e}", file=sys.stderr)
+            print(f"Tar Archive File Name: {tar_file_name}", file=sys.stderr)
+            print(f"File Name: {file_name}", file=sys.stderr)
+            print(f"Hash List Length: {len(hash_list)}\n", file=sys.stderr)
         return ''
  
     hash = sha256(b"".join(hash_list))
@@ -97,20 +97,14 @@ ZIP_FILE_SUFFIXES = [
 ]
 
 def is_zip_file(file_name):
-    for suffix in ZIP_FILE_SUFFIXES:
-        if file_name.lower().endswith(suffix):
-            return True
-    return False
+    return any(file_name.lower().endswith(suffix) for suffix in ZIP_FILE_SUFFIXES)
 
 TAR_FILE_SUFFIXES = [
     '.tar', '.tgz', '.tar.bz2', 'tar.gz',
 ]
 
 def is_tar_file(file_name):
-    for suffix in TAR_FILE_SUFFIXES:
-        if file_name.lower().endswith(suffix):
-            return True
-    return False
+    return any(file_name.lower().endswith(suffix) for suffix in TAR_FILE_SUFFIXES)
 
 
 class Publish():
@@ -134,7 +128,7 @@ class Publish():
             self.body = self.csv_body
             self.footer = self.csv_footer
         else:
-            raise ValueError("Not a valid output format: %s" % (output_format, ))
+            raise ValueError(f"Not a valid output format: {output_format}")
     
     def txt_header(self, record):
         first_key = True
@@ -143,10 +137,10 @@ class Publish():
         k_list.sort()
         for k in k_list:
             if not first_key:
-                s = s + "\t"
+                s += "\t"
             else:
                 first_key = False
-            s = s + k
+            s += k
         print(s, file=self.fd)
         self.txt_body(record)
     
@@ -157,15 +151,15 @@ class Publish():
         k_list.sort()
         for k in k_list:
             if not first_key:
-                s = s + "\t"
+                s += "\t"
             else:
                 first_key = False
-            s = s + str(record[k])
+            s += str(record[k])
         print(s, file=self.fd)
         self.record_count = self.record_count + 1
 
     def txt_footer(self):
-        print("Records: %d" % (self.record_count, ), file=self.fd)
+        print(f"Records: {self.record_count}", file=self.fd)
 
     def json_header(self, record):
         print('[', file=self.fd)
@@ -188,9 +182,7 @@ class Publish():
     def csv_body(self, record):
         k_list = list(record)
         k_list.sort()
-        r_list = []
-        for k in k_list:
-            r_list.append(record[k])
+        r_list = [record[k] for k in k_list]
         self.csvwriter.writerow(r_list)
 
     def csv_footer(self):
@@ -293,15 +285,15 @@ class Crawler():
         p = None
         failures = 0
         is_file = False
-        while not p or not is_file:
+        while not (p and is_file):
             if p:
                 try:
                     is_file = p.is_file()
                 except PermissionError as e:
                     is_file = False
                     if self.verbose:
-                        print("\nException: {0}".format(e), file=sys.stderr)
-                        print("Crawler.next_crawler(): Permission Problem At: {0}\n".format(self.base_path),
+                        print(f"\nException: {e}", file=sys.stderr)
+                        print(f"Crawler.next_crawler(): Permission Problem At: {self.base_path}\n",
                             file=sys.stderr)
             if p and is_file:
                 break
@@ -309,11 +301,11 @@ class Crawler():
                 p = self.path_iterator.__next__()
                 failures = 0
             except (OSError, FileNotFoundError) as e:
-                failures = failures + 1
+                failures += 1
                 if self.verbose:
-                    print("\nException: {0}".format(e), file=sys.stderr)
+                    print(f"\nException: {e}", file=sys.stderr)
                     print(
-                        "Crawler.__next__() {0} iterator failures at {1}\n".format(failures, self.base_path),
+                        f"Crawler.__next__() {failures} iterator failures at {self.base_path}\n",
                         file=sys.stderr)
                 if failures > 10:
                     # This might be overkill.
@@ -342,12 +334,12 @@ class Crawler():
         record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(p, strict=False)
 
         if self.verbose:
-            print("%s, %d" % (record['full_path'], record['size'], ), file=sys.stderr)
+            print(f"{record['full_path']}, {record['size']}", file=sys.stderr)
 
         if self.hash and record['size'] > 0:
             record['dropbox_hash'] = dropbox_hash(p, verbose=self.verbose)
-        
-        if (not created or not modified) and self.verbose:
+
+        if not (created and modified) and self.verbose:
             print('\ncreated or modified is None\n', record, '\n', file=sys.stderr)
 
         return record
@@ -391,8 +383,8 @@ class ZipCrawler():
             self.stop_iterator = True
             if self.verbose:
                 e = sys.exc_info()[0]
-                print("\nException: {0}".format(e), file=sys.stderr)
-                print("Tar Archive File: {0}\n".format(self.base_path), file=sys.stderr)
+                print(f"\nException: {e}", file=sys.stderr)
+                print(f"Tar Archive File: {self.base_path}\n", file=sys.stderr)
 
         return self
     
@@ -447,15 +439,15 @@ class ZipCrawler():
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
 
             if self.verbose:
-                print("%s, %d" % (record['full_path'], record['size'], ), file=sys.stderr)
+                print(f"{record['full_path']}, {record['size']}, {record['is_archive']}", file=sys.stderr)
 
             if hash and record['size'] > 0:
                 record['dropbox_hash'] = zip_dropbox_hash(self.z_file, self.file, name)
 
         except (OSError, zipfile.BadZipFile) as e:
             if self.verbose:
-                print("\nException: {0}".format(e), file=sys.stderr)
-                print("ZipCrawler.__next__(): Zip File Name {0}\n".format(self.base_path), file=sys.stderr)
+                print(f"\nException: {e}", file=sys.stderr)
+                print(f"ZipCrawler.__next__(): Zip File Name {self.base_path}\n", file=sys.stderr)
             raise StopIteration()
 
         return record
@@ -472,7 +464,7 @@ class ZipCrawler():
         name = str(name)
         if "/" not in name:
             return name
-        parts = name.split('.')
+        parts = name.split('/')
         return parts[-1]
 
 class TarCrawler():
@@ -497,8 +489,8 @@ class TarCrawler():
             self.stop_iterator = True
             if self.verbose:
                 e = sys.exc_info()[0]
-                print("\n__iter__(): Exception: {0}".format(e), file=sys.stderr)
-                print("Tar Archive File Name: {0}".format(self.file), file=sys.stderr)
+                print(f"\n__iter__(): Exception: {e}", file=sys.stderr)
+                print(f"Tar Archive File Name: {self.file}", file=sys.stderr)
 
         return self
     
@@ -523,8 +515,8 @@ class TarCrawler():
                 utc_dt = (convert_datetime_to_utc(datetime(MINYEAR, 1, 1))).isoformat()
             except:
                 e = sys.exc_info()[0]
-                print("\n__next(): Exception: {0}".format(e), file=sys.stderr)
-                print("Tar Archive File Name: {0}".format(self.file), file=sys.stderr)
+                print(f"\n__next(): Exception: {e}", file=sys.stderr)
+                print(f"Tar Archive File Name: {self.file}", file=sys.stderr)
                 print("tarinfo.mtime:", tarinfo.mtime, file=sys.stderr)
                
 
@@ -550,7 +542,7 @@ class TarCrawler():
             record['mime_type'], record['mime_encoding'] = mimetypes.guess_type(file_name, strict=False)
 
             if self.verbose:
-                print("%s, %d" % (record['full_path'], record['size'], ), file=sys.stderr)
+                print(f"{record['full_path']}, {record['size']}, {record['is_archive']}", file=sys.stderr)
 
             if hash and record['size'] > 0:
                 record['dropbox_hash'] = tar_dropbox_hash(self.tar, tarinfo, self.file, tarinfo.name, verbose=self.verbose)
@@ -560,8 +552,8 @@ class TarCrawler():
         except:
             if self.verbose:
                 e = sys.exc_info()[0]
-                print("\n__next__() {0}".format(e), file=sys.stderr)
-                print("TarCrawler.__next__(): tar_file: {0}\n".format(self.base_path), file=sys.stderr)
+                print(f"\n__next__() {e}", file=sys.stderr)
+                print(f"TarCrawler.__next__(): tar_file: {self.base_path}\n", file=sys.stderr)
             raise StopIteration()
 
         return record
@@ -578,7 +570,7 @@ class TarCrawler():
         name = str(name)
         if "/" not in name:
             return name
-        parts = name.split('.')
+        parts = name.split('/')
         return parts[-1]
 
 
@@ -586,7 +578,13 @@ def main_loop(args, publish):
 
     first_time = True
     for base_path in args['base_paths']:
-        crawler = Crawler(base_path=base_path, volume=args['volume'], verbose=args['verbose'], hash=(not args['no_hash']))
+        crawler = Crawler(
+                        base_path=base_path,
+                        volume=args['volume'],
+                        verbose=args['verbose'],
+                        hash=(not args['no_hash']),
+                        search_archives=args['search_archives']
+                    )
 
         for record in crawler:
             if first_time:
